@@ -8,7 +8,7 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
 // كل قداش يشيّك (كل 3 ساعات)
-const CRON_EXPR = process.env.CHECK_CRON || "0 */3 * * *";
+const CRON_EXPR = "*/1 * * * *";
 
 // ملف بسيط ضد التكرار (يرجع يصفّر كي تعمل redeploy)
 const STATE_FILE = "./posted.json";
