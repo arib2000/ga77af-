@@ -1,58 +1,69 @@
-import "dotenv/config";
-import { Client, GatewayIntentBits, EmbedBuilder } from "discord.js";
-import * as cheerio from "cheerio";
-
-const TOKEN = process.env.DISCORD_TOKEN;
-const CHANNEL_ID = process.env.CHANNEL_ID;
+import 'dotenv/config';
+import { Client, GatewayIntentBits } from 'discord.js';
+import fetch from 'node-fetch';
+import cron from 'node-cron';
+import fs from 'fs';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
-const STEAMDB_URL = "https://steamdb.info/upcoming/free/";
+const TOKEN = process.env.DISCORD_TOKEN;
+const CHANNEL_ID = process.env.CHANNEL_ID;
 
-async function getFreeGames() {
-  const res = await fetch(STEAMDB_URL, {
-    headers: { "User-Agent": "Mozilla/5.0" },
-  });
+const STATE_FILE = './posted.json';
 
-  const html = await res.text();
-  const $ = cheerio.load(html);
-
-  const games = [];
-
-  $("table tbody tr").each((_, row) => {
-    const link = $(row).find('a[href^="/app/"]').first();
-    const href = link.attr("href");
-    if (!href) return;
-
-    const appid = href.split("/")[2];
-    const name = link.text().trim();
-
-    games.push({
-      id: appid,
-      name,
-      url: `https://store.steampowered.com/app/${appid}/`,
-    });
-  });
-
-  return games;
+function loadState() {
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); }
+  catch { return { posted: [] }; }
 }
 
-client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+function saveState(state) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
 
+async function getEpicFreeGames() {
+  const url = `https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US`;
+  const res = await fetch(url);
+  const data = await res.json();
+
+  const elements = data?.data?.Catalog?.searchStore?.elements || [];
+
+  return elements
+    .filter(e => e?.promotions?.promotionalOffers?.length)
+    .map(e => {
+      const slug = e.productSlug || e.urlSlug;
+      return {
+        id: e.id,
+        title: e.title,
+        url: `https://store.epicgames.com/p/${slug}`
+      };
+    });
+}
+
+async function postFreeGames() {
   const channel = await client.channels.fetch(CHANNEL_ID);
-  const games = await getFreeGames();
+  const state = loadState();
+  const games = await getEpicFreeGames();
 
-  for (const game of games.slice(0, 5)) {
-    const embed = new EmbedBuilder()
-      .setTitle(game.name)
-      .setURL(game.url)
-      .setDescription("🔥 Free on Steam (limited time)");
+  const newGames = games.filter(g => !state.posted.includes(g.id));
 
-    await channel.send({ embeds: [embed] });
+  for (const game of newGames) {
+    await channel.send(`🎮 FREE NOW: **${game.title}**\n${game.url}`);
+    state.posted.push(game.id);
   }
+
+  saveState(state);
+}
+
+client.once('ready', async () => {
+  console.log(`Bot ready: ${client.user.tag}`);
+
+  await postFreeGames();
+
+  cron.schedule('0 */6 * * *', async () => {
+    await postFreeGames();
+  });
 });
 
 client.login(TOKEN);
