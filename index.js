@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits, EmbedBuilder } from "discord.js";
-import fetch from "node-fetch";
 import * as cheerio from "cheerio";
 
 const TOKEN = process.env.DISCORD_TOKEN;
